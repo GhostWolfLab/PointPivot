@@ -22,6 +22,10 @@
 - **双账户配置**：实盘与模拟盘分别存储独立 API 密钥，切换无需重填
 - **代理支持**：可为 OKX 连接配置 HTTP/SOCKS 代理
 
+![](/images/1.png)
+![](/images/2.png)
+![](/images/3.png)
+
 ## 技术栈
 
 - **后端**: Python 3.10+, FastAPI, Jinja2, SQLite (WAL), APScheduler, ccxt
@@ -33,7 +37,7 @@
 ### 1. 安装依赖
 
 ```bash
-cd okx
+cd PointPivot
 pip install -r requirements.txt
 ```
 
