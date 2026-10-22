@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+{% block title %}持仓管理 - OKX AI{% endblock %}
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4><i class="bi bi-wallet2"></i> 持仓管理
+    {% if is_simulated %}
+    <span class="badge bg-warning text-dark ms-2" title="当前为模拟盘，持仓来自 OKX 模拟账户">🧪 模拟盘</span>
+    {% else %}
+    <span class="badge bg-danger ms-2" title="当前为实盘，持仓来自真实账户">🔴 实盘</span>
+    {% endif %}
+  </h4>
+  <button class="btn btn-outline-primary btn-sm" id="syncBtn" onclick="syncPositions(this)">
+    <i class="bi bi-arrow-repeat"></i> 同步持仓
+  </button>
+</div>
+
+{% if not positions %}
+<div class="text-center py-5 text-muted">
+  <i class="bi bi-inbox" style="font-size:3rem"></i>
+  <p class="mt-2">当前无持仓</p>
+</div>
+{% else %}
+<div class="table-responsive">
+  <table class="table table-hover">
+    <thead class="table-dark">
+      <tr>
+        <th>交易对</th>
+        <th>方向</th>
+        <th>数量</th>
+        <th>均价</th>
+        <th>杠杆</th>
+        <th>未实现盈亏</th>
+        <th>保证金</th>
+        <th>止盈</th>
+        <th>止损</th>
+        <th>所属策略</th>
+        <th>操作</th>
+      </tr>
+    </thead>
+    <tbody id="positionsTbody">
+      {% for p in positions %}
+      <tr data-pos-key="{{ p.symbol }}|{{ p.side }}" data-strategy-id="{{ p.strategy_id or '' }}">
+        <td><strong>{{ p.symbol }}</strong></td>
+        <td><span class="badge {{ 'bg-success' if p.side == 'long' else 'bg-danger' }}">{{ '多' if p.side == 'long' else '空' }}</span></td>
+        <td class="js-size">{{ p.size }}</td>
+        <td class="js-avg">{{ p.avg_price }}</td>
+        <td class="js-lev">{{ p.leverage }}x</td>
+        <td class="js-upnl {{ 'text-success' if p.unrealized_pnl >= 0 else 'text-danger' }}">
+          {{ '+' if p.unrealized_pnl >= 0 else '' }}{{ '%.4f'|format(p.unrealized_pnl) }}
+        </td>
+        <td class="js-margin">{{ '%.2f'|format(p.margin) }}</td>
+        <td class="js-tp">{{ p.tp_price if p.tp_price is not none else '-' }}</td>
+        <td class="js-sl">{{ p.sl_price if p.sl_price is not none else '-' }}</td>
+        <td class="js-strategy">
+          {% if p.strategy_id %}
+          <span class="badge bg-info">{{ strategy_names.get(p.strategy_id, '#' ~ p.strategy_id) }}</span>
+          {% else %}-{% endif %}
+        </td>
+        <td>
+          <button class="btn btn-outline-danger btn-sm" onclick="closePos('{{ p.symbol }}', '{{ p.side }}', this)">
+            <i class="bi bi-x-circle"></i> 平仓
+          </button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<!-- Equity Chart -->
+<div class="card mt-4">
+  <div class="card-header"><i class="bi bi-graph-up"></i> 账户净值曲线</div>
+  <div class="card-body">
+    {% if not equity_data %}
+    <div class="text-center text-muted py-3">暂无净值数据</div>
+    {% else %}
+    <canvas id="equityChart" height="100"></canvas>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const strategyNames = {{ strategy_names|tojson }};
+
+function fmtNum(v, digits = 4) {
+  const n = Number(v || 0);
+  return n.toFixed(digits);
+}
+
+function renderStrategyBadge(strategyId) {
+  if (!strategyId) return '-';
+  const name = strategyNames[String(strategyId)] || strategyNames[strategyId] || ('#' + strategyId);
+  return `<span class="badge bg-info">${name}</span>`;
+}
+
+function updatePositionsTable(rows) {
+  const tbody = document.getElementById('positionsTbody');
+  if (!tbody) return;
+
+  const map = new Map();
+  rows.forEach(p => map.set(`${p.symbol}|${p.side}`, p));
+
+  let structureChanged = false;
+  const domRows = Array.from(tbody.querySelectorAll('tr[data-pos-key]'));
+  if (domRows.length !== rows.length) {
+    structureChanged = true;
+  }
+
+  for (const tr of domRows) {
+    const key = tr.dataset.posKey;
+    const p = map.get(key);
+    if (!p) {
+      structureChanged = true;
+      break;
+    }
+
+    const upnl = Number(p.unrealized_pnl || 0);
+    const upnlCell = tr.querySelector('.js-upnl');
+    upnlCell.textContent = `${upnl >= 0 ? '+' : ''}${fmtNum(upnl, 4)}`;
+    upnlCell.classList.toggle('text-success', upnl >= 0);
+    upnlCell.classList.toggle('text-danger', upnl < 0);
+
+    tr.querySelector('.js-size').textContent = fmtNum(p.size, 4).replace(/\.0+$/, '');
+    tr.querySelector('.js-avg').textContent = fmtNum(p.avg_price, 2);
+    tr.querySelector('.js-lev').textContent = `${Number(p.leverage || 1)}x`;
+    tr.querySelector('.js-margin').textContent = fmtNum(p.margin, 2);
+    tr.querySelector('.js-tp').textContent = p.tp_price == null ? '-' : fmtNum(p.tp_price, 2);
+    tr.querySelector('.js-sl').textContent = p.sl_price == null ? '-' : fmtNum(p.sl_price, 2);
+    tr.querySelector('.js-strategy').innerHTML = renderStrategyBadge(p.strategy_id);
+  }
+
+  if (structureChanged) {
+    location.reload();
+  }
+}
+
+async function refreshPositionsLive() {
+  try {
+    const rows = await api('GET', '/positions/live');
+    updatePositionsTable(rows || []);
+  } catch (_) {
+    // keep UI silent on periodic refresh errors
+  }
+}
+
+async function syncPositions(btn) {
+  setLoading(btn, true);
+  try {
+    await api('POST', '/positions/sync');
+    showToast('持仓同步完成');
+    await refreshPositionsLive();
+  } catch (e) {
+    showToast('同步失败: ' + e.message, 'error');
+  }
+  setLoading(btn, false);
+}
+
+async function closePos(symbol, side, btn) {
+  const label = side === 'long' ? '多' : '空';
+  if (!confirm(`确认平仓 ${symbol} ${label}单？`)) return;
+  setLoading(btn, true);
+  try {
+    const data = await api('POST', '/positions/close', { symbol, side });
+    showToast(data.message);
+    await refreshPositionsLive();
+    setTimeout(() => location.reload(), 400);
+  } catch (e) { showToast('平仓失败: ' + e.message, 'error'); }
+  setLoading(btn, false);
+}
+
+setInterval(refreshPositionsLive, 5000);
+
+// Equity chart
+{% if equity_data %}
+(function() {
+  const raw = {{ equity_json|safe }};
+  const css = getComputedStyle(document.documentElement);
+  const chartLine = (css.getPropertyValue('--chart-line') || '#00d4ff').trim();
+  const chartLine2 = (css.getPropertyValue('--chart-line-2') || '#ff9f43').trim();
+  const chartGrid = (css.getPropertyValue('--chart-grid') || '#2a2f3f').trim();
+  const textColor = (css.getPropertyValue('--text-1') || '#c9d7f2').trim();
+  function hexToRgba(hex, alpha) {
+    const v = hex.replace('#', '').trim();
+    if (v.length !== 6) return `rgba(255,159,67,${alpha})`;
+    const r = parseInt(v.slice(0, 2), 16);
+    const g = parseInt(v.slice(2, 4), 16);
+    const b = parseInt(v.slice(4, 6), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
+  }
+  const labels = raw.map(e => {
+    const d = new Date(e.timestamp);
+    return (d.getMonth()+1).toString().padStart(2,'0') + '-' + d.getDate().toString().padStart(2,'0') + ' ' + d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+  });
+  const values = raw.map(e => e.total_equity);
+  new Chart(document.getElementById('equityChart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: '总权益 (USDT)',
+        data: values,
+        borderColor: chartLine,
+        backgroundColor: hexToRgba(chartLine2, 0.12),
+        fill: true, tension: 0.3, pointRadius: 1,
+      }],
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: {
+          display: true,
+          labels: { color: textColor }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { maxTicksLimit: 12, color: textColor },
+          grid: { color: chartGrid }
+        },
+        y: {
+          ticks: { color: textColor },
+          grid: { color: chartGrid }
+        }
+      },
+    },
+  });
+})();
+{% endif %}
+</script>
+{% endblock %}

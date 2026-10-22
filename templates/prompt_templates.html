@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+{% block title %}策略模板管理 - OKX AI{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4><i class="bi bi-file-earmark-text"></i> 策略模板管理</h4>
+  <button class="btn btn-primary btn-sm" onclick="openEditor()">
+    <i class="bi bi-plus-lg"></i> 新建模板
+  </button>
+</div>
+
+<!-- 模板列表 -->
+<div class="row" id="templateList">
+  <div class="col-12 text-center text-muted py-5" id="emptyHint">
+    <i class="bi bi-inbox" style="font-size:2rem"></i>
+    <p class="mt-2">暂无模板，点击右上角新建</p>
+  </div>
+</div>
+
+<!-- 编辑弹窗 -->
+<div class="modal fade" id="editorModal" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="editorTitle">新建模板</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="editId">
+        <div class="row mb-3">
+          <div class="col-md-6">
+            <label class="form-label">模板名称 *</label>
+            <input id="editName" class="form-control" maxlength="200" required>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">描述</label>
+            <input id="editDesc" class="form-control" maxlength="500" placeholder="简要描述此模板的策略思路">
+          </div>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">提示词内容 *</label>
+          <small class="text-muted ms-2">
+            可用变量:
+            <code>{symbol}</code> <code>{klines}</code> <code>{current_price}</code>
+            <code>{bb_upper}</code> <code>{bb_middle}</code> <code>{bb_lower}</code> <code>{bb_position}</code>
+            <code>{rsi}</code> <code>{macd}</code> <code>{macd_signal}</code> <code>{macd_histogram}</code>
+            <code>{avg_volume}</code> <code>{last_volume}</code> <code>{volume_change}</code> <code>{volume_trend}</code>
+            <code>{upper_shadow_ratio}</code>
+            <code>{equity}</code> <code>{available_balance}</code> <code>{position_info}</code>
+            <code>{indicators}</code> <code>{current_time}</code>
+          </small>
+        </div>
+        <textarea id="editContent" class="form-control" rows="18"
+                  style="font-family:monospace;font-size:0.85rem" required></textarea>
+        <div class="form-check mt-2">
+          <input type="checkbox" class="form-check-input" id="editDefault">
+          <label class="form-check-label" for="editDefault">设为默认模板（新建策略时自动加载）</label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-primary" id="saveBtn" onclick="saveTemplate()">
+          <i class="bi bi-check-lg"></i> 保存
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 预览弹窗 -->
+<div class="modal fade" id="previewModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="previewTitle">模板预览</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <pre id="previewContent" style="white-space:pre-wrap;font-size:0.85rem;max-height:60vh;overflow-y:auto"></pre>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let editorModal, previewModal;
+let templates = [];
+
+document.addEventListener('DOMContentLoaded', () => {
+  editorModal = new bootstrap.Modal(document.getElementById('editorModal'));
+  previewModal = new bootstrap.Modal(document.getElementById('previewModal'));
+  loadTemplates();
+});
+
+async function loadTemplates() {
+  try {
+    templates = await api('GET', '/prompt-templates');
+    renderList();
+  } catch (e) {
+    showToast('加载模板失败: ' + e.message, 'error');
+  }
+}
+
+function renderList() {
+  const container = document.getElementById('templateList');
+  const empty = document.getElementById('emptyHint');
+
+  // 清除除 emptyHint 以外的内容
+  container.querySelectorAll('.tpl-card').forEach(el => el.remove());
+
+  if (templates.length === 0) {
+    empty.style.display = '';
+    return;
+  }
+  empty.style.display = 'none';
+
+  templates.forEach(t => {
+    const col = document.createElement('div');
+    col.className = 'col-lg-4 col-md-6 mb-3 tpl-card';
+    const preview = t.content.substring(0, 120).replace(/</g, '&lt;') + (t.content.length > 120 ? '...' : '');
+    const time = t.updated_at ? new Date(t.updated_at).toLocaleString('zh-CN') : '-';
+    col.innerHTML = `
+      <div class="card h-100 ${t.is_default ? 'border-primary' : ''}">
+        <div class="card-header d-flex justify-content-between align-items-center py-2">
+          <span class="fw-bold text-truncate" style="max-width:70%">
+            ${escapeHtml(t.name)}
+            ${t.is_default ? '<span class="badge bg-primary ms-1">默认</span>' : ''}
+          </span>
+          <div class="btn-group btn-group-sm">
+            <button class="btn btn-outline-secondary" title="预览" onclick="previewTpl(${t.id})">
+              <i class="bi bi-eye"></i>
+            </button>
+            <button class="btn btn-outline-primary" title="编辑" onclick="editTpl(${t.id})">
+              <i class="bi bi-pencil"></i>
+            </button>
+            <button class="btn btn-outline-danger" title="删除" onclick="deleteTpl(${t.id}, '${escapeHtml(t.name)}')">
+              <i class="bi bi-trash"></i>
+            </button>
+          </div>
+        </div>
+        <div class="card-body py-2" style="cursor:pointer" onclick="previewTpl(${t.id})">
+          <small class="text-muted">${escapeHtml(t.description || '无描述')}</small>
+          <pre class="mt-2 mb-0 text-muted" style="font-size:0.75rem;max-height:80px;overflow:hidden;white-space:pre-wrap">${preview}</pre>
+        </div>
+        <div class="card-footer py-1 text-muted" style="font-size:0.75rem">
+          更新: ${time}
+        </div>
+      </div>`;
+    container.appendChild(col);
+  });
+}
+
+function openEditor(tpl) {
+  document.getElementById('editId').value = tpl ? tpl.id : '';
+  document.getElementById('editName').value = tpl ? tpl.name : '';
+  document.getElementById('editDesc').value = tpl ? tpl.description : '';
+  document.getElementById('editContent').value = tpl ? tpl.content : '';
+  document.getElementById('editDefault').checked = tpl ? tpl.is_default : false;
+  document.getElementById('editorTitle').textContent = tpl ? '编辑模板' : '新建模板';
+  editorModal.show();
+}
+
+function editTpl(id) {
+  const tpl = templates.find(t => t.id === id);
+  if (tpl) openEditor(tpl);
+}
+
+function previewTpl(id) {
+  const tpl = templates.find(t => t.id === id);
+  if (!tpl) return;
+  document.getElementById('previewTitle').textContent = tpl.name;
+  document.getElementById('previewContent').textContent = tpl.content;
+  previewModal.show();
+}
+
+async function saveTemplate() {
+  const id = document.getElementById('editId').value;
+  const name = document.getElementById('editName').value.trim();
+  const content = document.getElementById('editContent').value.trim();
+  if (!name || !content) {
+    showToast('名称和内容不能为空', 'error');
+    return;
+  }
+  const payload = {
+    name,
+    description: document.getElementById('editDesc').value.trim(),
+    content,
+    is_default: document.getElementById('editDefault').checked,
+  };
+  const btn = document.getElementById('saveBtn');
+  setLoading(btn, true);
+  try {
+    if (id) {
+      await api('PUT', `/prompt-templates/${id}`, payload);
+    } else {
+      await api('POST', '/prompt-templates', payload);
+    }
+    showToast('模板已保存');
+    editorModal.hide();
+    await loadTemplates();
+  } catch (e) {
+    showToast('保存失败: ' + e.message, 'error');
+  } finally {
+    setLoading(btn, false);
+  }
+}
+
+async function deleteTpl(id, name) {
+  if (!confirm(`确定删除模板「${name}」？`)) return;
+  try {
+    await api('DELETE', `/prompt-templates/${id}`);
+    showToast('已删除');
+    await loadTemplates();
+  } catch (e) {
+    showToast('删除失败: ' + e.message, 'error');
+  }
+}
+</script>
+{% endblock %}

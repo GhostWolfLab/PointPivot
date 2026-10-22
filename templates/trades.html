@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}交易记录 - OKX AI{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4><i class="bi bi-arrow-left-right"></i> 交易记录</h4>
+  <form class="d-flex gap-2" method="get" action="/trades">
+    <select name="strategy_id" class="form-select form-select-sm" style="width:200px" onchange="this.form.submit()">
+      <option value="">全部策略</option>
+      {% for s in strategies %}
+      <option value="{{ s.id }}" {{ 'selected' if filter_strategy_id == s.id else '' }}>{{ s.name }}</option>
+      {% endfor %}
+    </select>
+  </form>
+</div>
+
+{% if not trades %}
+<div class="text-center py-5 text-muted">
+  <i class="bi bi-inbox" style="font-size:3rem"></i>
+  <p class="mt-2">暂无交易记录</p>
+</div>
+{% else %}
+<!-- Summary -->
+<div class="row mb-3">
+  <div class="col-md-3">
+    <div class="card text-center">
+      <div class="card-body py-2">
+        <small class="text-muted">总交易数</small>
+        <h5>{{ total }}</h5>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card text-center">
+      <div class="card-body py-2">
+        <small class="text-muted">总盈亏</small>
+        <h5 class="{{ 'text-success' if total_pnl >= 0 else 'text-danger' }}">
+          {{ '+' if total_pnl >= 0 else '' }}{{ '%.4f'|format(total_pnl) }} USDT
+        </h5>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card text-center">
+      <div class="card-body py-2">
+        <small class="text-muted">盈利笔数</small>
+        <h5 class="text-success">{{ win_count }}</h5>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card text-center">
+      <div class="card-body py-2">
+        <small class="text-muted">亏损笔数</small>
+        <h5 class="text-danger">{{ loss_count }}</h5>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="table-responsive">
+  <table class="table table-hover table-sm">
+    <thead class="table-dark">
+      <tr>
+        <th>时间</th>
+        <th>交易对</th>
+        <th>方向</th>
+        <th>操作</th>
+        <th>价格</th>
+        <th>数量</th>
+        <th>盈亏</th>
+        <th>手续费</th>
+        <th>策略</th>
+        <th>订单ID</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in trades %}
+      <tr>
+        <td><small>{{ t.created_at.strftime('%m-%d %H:%M:%S') }}</small></td>
+        <td><strong>{{ t.symbol }}</strong></td>
+        <td><span class="badge {{ 'bg-success' if t.side == 'long' else 'bg-danger' }}">{{ '多' if t.side == 'long' else '空' }}</span></td>
+        <td><span class="badge {{ 'bg-primary' if t.action == 'open' else 'bg-warning text-dark' }}">{{ '开仓' if t.action == 'open' else '平仓' }}</span></td>
+        <td>{{ t.price }}</td>
+        <td>{{ t.quantity }}</td>
+        <td class="{{ 'text-success' if (t.pnl or 0) >= 0 else 'text-danger' }}">
+          {% if t.pnl is not none %}{{ '+' if t.pnl >= 0 else '' }}{{ '%.4f'|format(t.pnl) }}{% else %}-{% endif %}
+        </td>
+        <td>{{ '%.4f'|format(t.fee) if t.fee else '0' }}</td>
+        <td><span class="badge bg-secondary">{{ strategy_names.get(t.strategy_id, '#' ~ t.strategy_id) }}</span></td>
+        <td><small class="text-muted">{{ t.order_id[:12] if t.order_id else '-' }}</small></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Pagination -->
+<nav>
+  <ul class="pagination pagination-sm justify-content-center">
+    <li class="page-item {{ 'disabled' if page <= 1 else '' }}">
+      <a class="page-link" href="?page={{ page - 1 }}{{ '&strategy_id=' ~ filter_strategy_id if filter_strategy_id else '' }}">上一页</a>
+    </li>
+    <li class="page-item disabled"><span class="page-link">{{ page }} / {{ total_pages }}</span></li>
+    <li class="page-item {{ 'disabled' if page >= total_pages else '' }}">
+      <a class="page-link" href="?page={{ page + 1 }}{{ '&strategy_id=' ~ filter_strategy_id if filter_strategy_id else '' }}">下一页</a>
+    </li>
+  </ul>
+</nav>
+{% endif %}
+{% endblock %}

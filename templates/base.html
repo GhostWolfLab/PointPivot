@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}OKX AI 交易{% endblock %}</title>
+  <script>
+    (function() {
+      const saved = localStorage.getItem('theme-mode');
+      document.documentElement.setAttribute('data-theme', saved || 'dark');
+    })();
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="/static/app.css" rel="stylesheet">
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <nav class="navbar navbar-expand-lg">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="/"><i class="bi bi-robot"></i> PointPivot 交易系统</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navBar">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navBar">
+        <ul class="navbar-nav me-auto">
+          <li class="nav-item">
+            <a class="nav-link {% if active_page == 'strategies' %}active{% endif %}" href="/strategies">
+              <i class="bi bi-gear"></i> 策略管理
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link {% if active_page == 'logs' %}active{% endif %}" href="/logs">
+              <i class="bi bi-journal-text"></i> 运行日志
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link {% if active_page == 'positions' %}active{% endif %}" href="/positions">
+              <i class="bi bi-wallet2"></i> 持仓管理
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link {% if active_page == 'trades' %}active{% endif %}" href="/trades">
+              <i class="bi bi-arrow-left-right"></i> 交易记录
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link {% if active_page == 'prompt_templates' %}active{% endif %}" href="/prompt-templates">
+              <i class="bi bi-file-earmark-text"></i> 策略模板
+            </a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link {% if active_page == 'settings' %}active{% endif %}" href="/settings">
+              <i class="bi bi-sliders"></i> 系统配置
+            </a>
+          </li>
+        </ul>
+        <div class="d-flex align-items-center gap-2">
+          <button class="btn btn-outline-info btn-sm" id="themeToggleBtn" type="button" onclick="toggleTheme()">
+            <i class="bi bi-moon-stars"></i> 深色
+          </button>
+          <span class="small text-secondary">已登录: snowwolf</span>
+          <a class="btn btn-outline-light btn-sm" href="/logout">
+            <i class="bi bi-box-arrow-right"></i> 退出
+          </a>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container-fluid mt-3 mb-5">
+    {% block content %}{% endblock %}
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="/static/app.js"></script>
+  <script>
+    function applyThemeLabel() {
+      const mode = document.documentElement.getAttribute('data-theme') || 'dark';
+      const btn = document.getElementById('themeToggleBtn');
+      if (!btn) return;
+      if (mode === 'light') {
+        btn.innerHTML = '<i class="bi bi-sun"></i> 亮色';
+      } else {
+        btn.innerHTML = '<i class="bi bi-moon-stars"></i> 深色';
+      }
+    }
+
+    function toggleTheme() {
+      const html = document.documentElement;
+      const current = html.getAttribute('data-theme') || 'dark';
+      const next = current === 'dark' ? 'light' : 'dark';
+      html.setAttribute('data-theme', next);
+      localStorage.setItem('theme-mode', next);
+      applyThemeLabel();
+    }
+
+    applyThemeLabel();
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

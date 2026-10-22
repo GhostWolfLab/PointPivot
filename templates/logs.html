@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}运行日志 - OKX AI{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4><i class="bi bi-journal-text"></i> 策略运行日志</h4>
+  <form class="d-flex gap-2" method="get" action="/logs">
+    <select name="strategy_id" class="form-select form-select-sm" style="width:200px" onchange="this.form.submit()">
+      <option value="">全部策略</option>
+      {% for s in strategies %}
+      <option value="{{ s.id }}" {{ 'selected' if filter_strategy_id == s.id else '' }}>{{ s.name }}</option>
+      {% endfor %}
+    </select>
+  </form>
+</div>
+
+{% if not logs %}
+<div class="text-center py-5 text-muted">
+  <i class="bi bi-inbox" style="font-size:3rem"></i>
+  <p class="mt-2">暂无日志记录</p>
+</div>
+{% else %}
+<div class="table-responsive">
+  <table class="table table-hover table-sm">
+    <thead class="table-dark">
+      <tr>
+        <th>时间</th>
+        <th>策略</th>
+        <th>交易对</th>
+        <th>AI决策</th>
+        <th>置信度</th>
+        <th>下单</th>
+        <th>错误</th>
+        <th>详情</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for log in logs %}
+      <tr>
+        <td><small>{{ fmt_bj_time(log.created_at) }}</small></td>
+        <td><span class="badge bg-secondary">{{ strategy_names.get(log.strategy_id, '#' ~ log.strategy_id) }}</span></td>
+        <td><code>{{ log.symbol }}</code></td>
+        <td><span class="{{ action_badge_class(log.parsed_action) }}">{{ action_label(log.parsed_action) }}</span></td>
+        <td>
+          {% if log.parsed_confidence %}
+          <div class="progress" style="height:18px;min-width:60px">
+            <div class="progress-bar {{ 'bg-success' if log.parsed_confidence >= 70 else ('bg-warning' if log.parsed_confidence >= 40 else 'bg-danger') }}"
+                 style="width:{{ log.parsed_confidence }}%">{{ log.parsed_confidence }}%</div>
+          </div>
+          {% endif %}
+        </td>
+        <td>
+          {% if log.order_placed %}<i class="bi bi-check-circle text-success"></i>{% else %}<i class="bi bi-dash text-muted"></i>{% endif %}
+        </td>
+        <td>
+          {% if log.error_message %}
+          <small class="text-danger" title="{{ log.error_message }}">{{ log.error_message[:30] }}{{ '...' if log.error_message|length > 30 else '' }}</small>
+          {% endif %}
+        </td>
+        <td>
+          <button class="btn btn-outline-info btn-sm" data-bs-toggle="modal" data-bs-target="#logModal{{ log.id }}">
+            <i class="bi bi-eye"></i>
+          </button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Pagination -->
+<nav>
+  <ul class="pagination pagination-sm justify-content-center">
+    <li class="page-item {{ 'disabled' if page <= 1 else '' }}">
+      <a class="page-link" href="?page={{ page - 1 }}{{ '&strategy_id=' ~ filter_strategy_id if filter_strategy_id else '' }}">上一页</a>
+    </li>
+    <li class="page-item disabled"><span class="page-link">{{ page }} / {{ total_pages }}</span></li>
+    <li class="page-item {{ 'disabled' if page >= total_pages else '' }}">
+      <a class="page-link" href="?page={{ page + 1 }}{{ '&strategy_id=' ~ filter_strategy_id if filter_strategy_id else '' }}">下一页</a>
+    </li>
+  </ul>
+</nav>
+
+<!-- Detail Modals -->
+{% for log in logs %}
+<div class="modal fade" id="logModal{{ log.id }}" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">日志详情 #{{ log.id }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <h6>决策结果</h6>
+        <div class="mb-3">
+          <span class="{{ action_badge_class(log.parsed_action) }} me-2">{{ action_label(log.parsed_action) }}</span>
+          <span>置信度: {{ log.parsed_confidence }}%</span>
+        </div>
+        {% if log.parsed_reasoning %}
+        <div class="alert alert-info"><strong>理由:</strong> {{ log.parsed_reasoning }}</div>
+        {% endif %}
+        {% if log.error_message %}
+        <div class="alert alert-danger"><strong>错误:</strong> {{ log.error_message }}</div>
+        {% endif %}
+        {% if log.prompt_sent %}
+        <h6>发送的 Prompt</h6>
+        <pre class="log-pre">{{ log.prompt_sent }}</pre>
+        <h6>AI 原始响应</h6>
+        <pre class="log-pre">{{ log.ai_raw_response }}</pre>
+        {% else %}
+        <div class="alert alert-secondary py-2 mb-0"><i class="bi bi-lightning-charge-fill text-warning me-1"></i>纯规则模式 — 本地计算，未调用 AI</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endfor %}
+{% endif %}
+{% endblock %}

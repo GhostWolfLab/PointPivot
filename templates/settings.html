@@ -1,0 +1,376 @@
+{% extends "base.html" %}
+{% block title %}系统配置 - OKX AI{% endblock %}
+
+{% block content %}
+<h4 class="mb-3"><i class="bi bi-sliders"></i> 系统配置</h4>
+
+<form id="configForm" onsubmit="return saveConfig(event)">
+  <!-- OKX API -->
+  <div class="card mb-4">
+    <div class="card-header"><i class="bi bi-key"></i> OKX API 配置</div>
+    <div class="card-body">
+      <div class="form-check form-switch mb-3">
+        <input name="okx_simulated" type="checkbox" class="form-check-input" id="simSwitch"
+               {{ 'checked' if config.okx_simulated else '' }} onchange="toggleSimWarning()">
+        <label class="form-check-label" for="simSwitch" id="simLabel">
+          {{ '🟢 当前: 模拟盘模式 (使用模拟盘 API)' if config.okx_simulated else '🔴 当前: 实盘模式 (使用实盘 API)' }}
+        </label>
+      </div>
+
+      <div class="border rounded p-3 mb-3" id="positionModeBox">
+        <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+          <strong><i class="bi bi-diagram-3"></i> 账户持仓模式</strong>
+          <span id="positionModeBadge" class="badge text-bg-secondary">检测中...</span>
+        </div>
+        <div class="row g-2 align-items-end">
+          <div class="col-md-4">
+            <label class="form-label mb-1">切换为</label>
+            <select id="positionModeSelect" class="form-select">
+              <option value="net_mode">单向持仓 (net_mode)</option>
+              <option value="long_short_mode">双向持仓 (long_short_mode)</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <button type="button" class="btn btn-outline-primary w-100" id="setPositionModeBtn" onclick="setPositionMode()">
+              应用持仓模式
+            </button>
+          </div>
+          <div class="col-md-5">
+            <div id="positionModeTip" class="form-text">
+              注: 切换模式前请先平掉相关持仓/挂单，否则交易所可能拒绝切换。
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-3 mb-3">
+        <div class="col-lg-6">
+          <div class="border rounded p-3 h-100">
+            <h6 class="mb-3"><i class="bi bi-cash-stack"></i> 实盘 API 凭证</h6>
+            <div class="mb-2">
+              <label class="form-label">实盘 API Key</label>
+              <div class="input-group">
+                <input name="okx_live_api_key" type="password" class="form-control"
+                       placeholder="{{ '••••••(已设置)' if config.okx_live_api_key_set else '未设置' }}">
+                <span class="input-group-text">
+                  <i class="bi {{ 'bi-check-circle text-success' if config.okx_live_api_key_set else 'bi-x-circle text-danger' }}"></i>
+                </span>
+              </div>
+            </div>
+            <div class="mb-2">
+              <label class="form-label">实盘 Secret Key</label>
+              <div class="input-group">
+                <input name="okx_live_secret_key" type="password" class="form-control"
+                       placeholder="{{ '••••••(已设置)' if config.okx_live_secret_key_set else '未设置' }}">
+                <span class="input-group-text">
+                  <i class="bi {{ 'bi-check-circle text-success' if config.okx_live_secret_key_set else 'bi-x-circle text-danger' }}"></i>
+                </span>
+              </div>
+            </div>
+            <div>
+              <label class="form-label">实盘 Passphrase</label>
+              <div class="input-group">
+                <input name="okx_live_passphrase" type="password" class="form-control"
+                       placeholder="{{ '••••••(已设置)' if config.okx_live_passphrase_set else '未设置' }}">
+                <span class="input-group-text">
+                  <i class="bi {{ 'bi-check-circle text-success' if config.okx_live_passphrase_set else 'bi-x-circle text-danger' }}"></i>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-lg-6">
+          <div class="border rounded p-3 h-100 bg-light">
+            <h6 class="mb-3"><i class="bi bi-bezier2"></i> 模拟盘 API 凭证</h6>
+            <div class="mb-2">
+              <label class="form-label">模拟盘 API Key</label>
+              <div class="input-group">
+                <input name="okx_sim_api_key" type="password" class="form-control"
+                       placeholder="{{ '••••••(已设置)' if config.okx_sim_api_key_set else '未设置' }}">
+                <span class="input-group-text">
+                  <i class="bi {{ 'bi-check-circle text-success' if config.okx_sim_api_key_set else 'bi-x-circle text-danger' }}"></i>
+                </span>
+              </div>
+            </div>
+            <div class="mb-2">
+              <label class="form-label">模拟盘 Secret Key</label>
+              <div class="input-group">
+                <input name="okx_sim_secret_key" type="password" class="form-control"
+                       placeholder="{{ '••••••(已设置)' if config.okx_sim_secret_key_set else '未设置' }}">
+                <span class="input-group-text">
+                  <i class="bi {{ 'bi-check-circle text-success' if config.okx_sim_secret_key_set else 'bi-x-circle text-danger' }}"></i>
+                </span>
+              </div>
+            </div>
+            <div>
+              <label class="form-label">模拟盘 Passphrase</label>
+              <div class="input-group">
+                <input name="okx_sim_passphrase" type="password" class="form-control"
+                       placeholder="{{ '••••••(已设置)' if config.okx_sim_passphrase_set else '未设置' }}">
+                <span class="input-group-text">
+                  <i class="bi {{ 'bi-check-circle text-success' if config.okx_sim_passphrase_set else 'bi-x-circle text-danger' }}"></i>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mb-3">
+        <label class="form-label">HTTP 代理 (国内访问 OKX 必须)</label>
+        <input name="okx_proxy" class="form-control" value="{{ config.okx_proxy }}"
+               placeholder="如 http://127.0.0.1:7890 或 socks5://127.0.0.1:1080">
+        <div class="form-text">如果你在国内，需要设置代理才能访问 OKX API。留空表示直连。</div>
+      </div>
+      <div class="alert alert-danger {{ '' if not config.okx_simulated else 'd-none' }}" id="liveWarning">
+        <i class="bi bi-exclamation-triangle"></i>
+        <strong>警告：</strong>当前为实盘模式，将使用实盘 API 与真实资金交易，请确保已配置正确的实盘凭证并了解风险！
+      </div>
+
+      <div class="mt-3">
+        <button type="button" class="btn btn-outline-info" id="testConnBtn" onclick="testConnection()">
+          <i class="bi bi-wifi"></i> 当前生效凭证连通性测试
+        </button>
+        <div id="connResult" class="mt-2 d-none"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI Global Config -->
+  <div class="card mb-4">
+    <div class="card-header"><i class="bi bi-cpu"></i> 全局 AI 配置 (策略未覆盖时使用)</div>
+    <div class="card-body">
+      <div class="row mb-3">
+        <div class="col-md-3">
+          <label class="form-label">默认 AI 提供商</label>
+          <select name="ai_default_provider" class="form-select">
+            <option value="deepseek" {{ 'selected' if config.ai_default_provider == 'deepseek' else '' }}>DeepSeek</option>
+            <option value="qwen" {{ 'selected' if config.ai_default_provider == 'qwen' else '' }}>Qwen (通义千问)</option>
+            <option value="local" {{ 'selected' if config.ai_default_provider == 'local' else '' }}>本地模型 (Ollama/vLLM/LocalAI)</option>
+            <option value="other" {{ 'selected' if config.ai_default_provider == 'other' else '' }}>其他</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">默认模型</label>
+          <input name="ai_default_model" class="form-control" value="{{ config.ai_default_model }}" placeholder="如 deepseek-chat">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">API Base URL</label>
+          <input name="ai_default_base_url" class="form-control" value="{{ config.ai_default_base_url }}" placeholder="如 https://api.deepseek.com/v1">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">API Key</label>
+          <div class="input-group">
+            <input name="ai_default_api_key" type="password" class="form-control"
+                   placeholder="{{ '••••••(已设置)' if config.ai_default_api_key_set else '未设置' }}">
+            <span class="input-group-text">
+              <i class="bi {{ 'bi-check-circle text-success' if config.ai_default_api_key_set else 'bi-x-circle text-danger' }}"></i>
+            </span>
+          </div>
+        </div>
+      </div>
+      <div class="text-muted small">
+        <p class="mb-1"><strong>DeepSeek:</strong> Base URL = <code>https://api.deepseek.com/v1</code>, Model = <code>deepseek-chat</code></p>
+        <p class="mb-1"><strong>Qwen:</strong> Base URL = <code>https://dashscope.aliyuncs.com/compatible-mode/v1</code>, Model = <code>qwen-plus</code></p>
+        <p class="mb-0"><strong>本地模型 (Ollama/vLLM/LocalAI):</strong> Base URL 填本地地址如 <code>http://localhost:11434/v1</code>（Ollama）或 <code>http://localhost:8000/v1</code>（vLLM），API Key 可留空；Model 填实际部署的模型名</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Telegram Notification -->
+  <div class="card mb-4">
+    <div class="card-header"><i class="bi bi-telegram"></i> Telegram 开仓通知</div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Bot Token</label>
+          <div class="input-group">
+            <input name="tg_bot_token" type="password" class="form-control"
+                   placeholder="{{ '••••••(已设置)' if config.tg_bot_token_set else '未设置，如 123456:ABC-xyz' }}">
+            <span class="input-group-text">
+              <i class="bi {{ 'bi-check-circle text-success' if config.tg_bot_token_set else 'bi-x-circle text-danger' }}"></i>
+            </span>
+          </div>
+          <div class="form-text">通过 @BotFather 创建机器人后获取</div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Chat ID</label>
+          <input name="tg_chat_id" class="form-control" value="{{ config.tg_chat_id }}"
+                 placeholder="如 123456789 或 -100xxxxxxxxx">
+          <div class="form-text">个人 ID 或群组 ID，可通过 @userinfobot 获取</div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Telegram 代理 (可选)</label>
+          <input name="tg_proxy" class="form-control" value="{{ config.tg_proxy }}"
+                 placeholder="如 http://127.0.0.1:7890">
+          <div class="form-text">国内访问 Telegram API 需配置代理，留空直连</div>
+        </div>
+      </div>
+      <div class="mt-3">
+        <button type="button" class="btn btn-outline-info btn-sm" onclick="testTelegram()">
+          <i class="bi bi-send"></i> 发送测试消息
+        </button>
+        <div id="tgTestResult" class="mt-2 d-none"></div>
+      </div>
+      <div class="form-text mt-2">
+        <i class="bi bi-info-circle"></i> 仅在策略成功<strong>开仓</strong>时发送通知，包含交易对、方向、开仓价、止盈止损及决策理由。
+      </div>
+    </div>
+  </div>
+
+  <button type="submit" class="btn btn-primary" id="saveBtn">保存配置</button>
+  <span class="text-success ms-2 d-none" id="savedTip"><i class="bi bi-check-circle"></i> 已保存</span>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleSimWarning() {
+  const checked = document.getElementById('simSwitch').checked;
+  document.getElementById('simLabel').textContent = checked
+    ? '🟢 当前: 模拟盘模式 (使用模拟盘 API)'
+    : '🔴 当前: 实盘模式 (使用实盘 API)';
+  document.getElementById('liveWarning').classList.toggle('d-none', checked);
+}
+
+function renderPositionMode(mode) {
+  const badge = document.getElementById('positionModeBadge');
+  const select = document.getElementById('positionModeSelect');
+  const text = mode === 'long_short_mode' ? '双向持仓' : '单向持仓';
+  badge.textContent = text;
+  badge.className = mode === 'long_short_mode' ? 'badge text-bg-success' : 'badge text-bg-primary';
+  select.value = mode;
+}
+
+async function loadPositionMode() {
+  const badge = document.getElementById('positionModeBadge');
+  try {
+    const data = await api('GET', '/system/position-mode');
+    renderPositionMode(data.mode || 'net_mode');
+  } catch (e) {
+    badge.textContent = '检测失败';
+    badge.className = 'badge text-bg-danger';
+    document.getElementById('positionModeTip').textContent = '读取失败: ' + e.message;
+  }
+}
+
+async function setPositionMode() {
+  const btn = document.getElementById('setPositionModeBtn');
+  const mode = document.getElementById('positionModeSelect').value;
+  const modeText = mode === 'long_short_mode' ? '双向持仓' : '单向持仓';
+  if (!confirm('确认切换持仓模式为「' + modeText + '」？')) {
+    return;
+  }
+
+  setLoading(btn, true);
+  try {
+    const data = await api('PUT', '/system/position-mode', { mode });
+    renderPositionMode(data.mode || mode);
+    document.getElementById('positionModeTip').textContent = data.message || ('已切换为' + modeText);
+    showToast(data.message || '持仓模式切换成功');
+  } catch (e) {
+    showToast('切换失败: ' + e.message, 'error');
+    document.getElementById('positionModeTip').textContent = '切换失败: ' + e.message;
+  }
+  setLoading(btn, false);
+}
+
+async function testConnection() {
+  const btn = document.getElementById('testConnBtn');
+  const resultDiv = document.getElementById('connResult');
+  setLoading(btn, true);
+  resultDiv.className = 'mt-2';
+  resultDiv.innerHTML = '<span class="text-muted"><span class="spinner-border spinner-border-sm"></span> 测试中...</span>';
+  try {
+    const data = await api('POST', '/system/test-connection');
+    if (data.ok) {
+      resultDiv.className = 'mt-2 alert alert-success py-2';
+      resultDiv.innerHTML = `<i class="bi bi-check-circle-fill"></i> <strong>${data.mode}</strong> — ${data.message}`;
+    } else {
+      resultDiv.className = 'mt-2 alert alert-danger py-2';
+      resultDiv.innerHTML = `<i class="bi bi-x-circle-fill"></i> <strong>${data.mode}</strong> — ${data.message}`;
+    }
+    if (data.debug) {
+      resultDiv.innerHTML += `<details class="mt-1"><summary class="small text-muted" style="cursor:pointer">原始结构 (调试)</summary><pre class="small mb-0" style="max-height:200px;overflow:auto">${JSON.stringify(data.debug, null, 2)}</pre></details>`;
+    }
+  } catch (e) {
+    resultDiv.className = 'mt-2 alert alert-danger py-2';
+    resultDiv.innerHTML = `<i class="bi bi-x-circle-fill"></i> 请求失败: ${e.message}`;
+  }
+  setLoading(btn, false);
+}
+
+async function saveConfig(e) {
+  e.preventDefault();
+  const fd = new FormData(document.getElementById('configForm'));
+  const simulated = !!fd.get('okx_simulated');
+
+  // Warn on switching to live
+  if (!simulated) {
+    if (!confirm('确认切换到实盘模式？这将使用真实资金进行交易！')) {
+      document.getElementById('simSwitch').checked = true;
+      toggleSimWarning();
+      return false;
+    }
+  }
+
+  const payload = {
+    okx_simulated: simulated,
+    okx_proxy: fd.get('okx_proxy') || '',
+    ai_default_provider: fd.get('ai_default_provider'),
+    ai_default_base_url: fd.get('ai_default_base_url'),
+    ai_default_model: fd.get('ai_default_model'),
+  };
+  if (fd.get('okx_live_api_key')) payload.okx_live_api_key = fd.get('okx_live_api_key');
+  if (fd.get('okx_live_secret_key')) payload.okx_live_secret_key = fd.get('okx_live_secret_key');
+  if (fd.get('okx_live_passphrase')) payload.okx_live_passphrase = fd.get('okx_live_passphrase');
+  if (fd.get('okx_sim_api_key')) payload.okx_sim_api_key = fd.get('okx_sim_api_key');
+  if (fd.get('okx_sim_secret_key')) payload.okx_sim_secret_key = fd.get('okx_sim_secret_key');
+  if (fd.get('okx_sim_passphrase')) payload.okx_sim_passphrase = fd.get('okx_sim_passphrase');
+  if (fd.get('ai_default_api_key')) payload.ai_default_api_key = fd.get('ai_default_api_key');
+  payload.tg_chat_id = fd.get('tg_chat_id') || '';
+  payload.tg_proxy = fd.get('tg_proxy') || '';
+  if (fd.get('tg_bot_token')) payload.tg_bot_token = fd.get('tg_bot_token');
+
+  const btn = document.getElementById('saveBtn');
+  setLoading(btn, true);
+  try {
+    await api('PUT', '/system/config', payload);
+    showToast('配置已保存');
+    document.getElementById('savedTip').classList.remove('d-none');
+    setTimeout(() => location.reload(), 800);
+  } catch (e) {
+    showToast('保存失败: ' + e.message, 'error');
+    setLoading(btn, false);
+  }
+  return false;
+}
+
+async function testTelegram() {
+  const fd = new FormData(document.getElementById('configForm'));
+  const resultDiv = document.getElementById('tgTestResult');
+  resultDiv.className = 'mt-2';
+  resultDiv.innerHTML = '<span class="text-muted"><span class="spinner-border spinner-border-sm"></span> 发送中...</span>';
+  try {
+    const data = await api('POST', '/system/test-telegram', {
+      tg_bot_token: fd.get('tg_bot_token') || '',
+      tg_chat_id: fd.get('tg_chat_id') || '',
+      tg_proxy: fd.get('tg_proxy') || '',
+    });
+    if (data.ok) {
+      resultDiv.className = 'mt-2 alert alert-success py-2';
+      resultDiv.innerHTML = `<i class="bi bi-check-circle-fill"></i> ${data.message}`;
+    } else {
+      resultDiv.className = 'mt-2 alert alert-danger py-2';
+      resultDiv.innerHTML = `<i class="bi bi-x-circle-fill"></i> ${data.message}`;
+    }
+  } catch (e) {
+    resultDiv.className = 'mt-2 alert alert-danger py-2';
+    resultDiv.innerHTML = `<i class="bi bi-x-circle-fill"></i> 请求失败: ${e.message}`;
+  }
+}
+
+loadPositionMode();
+</script>
+{% endblock %}

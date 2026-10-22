@@ -1,0 +1,459 @@
+{% extends "base.html" %}
+{% block title %}{{ '新建策略' if is_new else '编辑策略' }} - OKX AI{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4>{{ '新建策略' if is_new else '编辑策略: ' + strategy.name }}</h4>
+  <a href="/strategies" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i> 返回</a>
+</div>
+
+<div class="card">
+  <div class="card-body">
+    <form id="strategyForm" onsubmit="return saveStrategy(event)">
+      <!-- 基本信息 -->
+      <div class="row mb-3">
+        <div class="col-md-6">
+          <label class="form-label">策略名称 *</label>
+          <input name="name" class="form-control" required value="{{ strategy.name if not is_new else '' }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">运行周期 (分钟)</label>
+          <input name="interval_minutes" type="number" class="form-control" min="1" max="1440"
+                 value="{{ strategy.interval_minutes if not is_new else 15 }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">状态</label>
+          <div class="form-check form-switch mt-2">
+            <input name="enabled" type="checkbox" class="form-check-input" id="enabledSwitch"
+                   {{ 'checked' if not is_new and strategy.enabled else '' }}>
+            <label class="form-check-label" for="enabledSwitch">启用</label>
+          </div>
+        </div>
+      </div>
+
+      <!-- 决策模式 -->
+      <div class="alert mb-3 py-2" id="modeAlert"
+           style="background:{{ '#0d3349' if not is_new and not strategy.use_ai else '#1a3a2a' }};border:1px solid {{ '#0dcaf0' if not is_new and not strategy.use_ai else '#198754' }}">
+        <div class="d-flex align-items-center justify-content-between">
+          <div>
+            <span id="modeLabelText">
+              {% if not is_new and not strategy.use_ai %}
+              <i class="bi bi-lightning-fill text-info"></i>
+              <strong class="text-info">纯规则模式</strong>
+              <span class="text-muted ms-2">— 不调用 AI，基于布林带位置 + RSI 自动网格式决策</span>
+              {% else %}
+              <i class="bi bi-robot text-success"></i>
+              <strong class="text-success">AI 智能模式</strong>
+              <span class="text-muted ms-2">— 每轮调用 AI 进行交易决策</span>
+              {% endif %}
+            </span>
+          </div>
+          <div class="form-check form-switch mb-0">
+            <input type="checkbox" class="form-check-input" id="useAiSwitch"
+                   {{ 'checked' if is_new or strategy.use_ai else '' }}
+                   onchange="toggleAiMode()">
+            <label class="form-check-label" for="useAiSwitch">AI 模式</label>
+          </div>
+        </div>
+      </div>
+      <div id="aiConfigSection">
+      <h6 class="border-bottom pb-2 mb-3"><i class="bi bi-cpu"></i> AI 模型配置 (留空使用全局配置)</h6>
+      <div class="row mb-3">
+        <div class="col-md-3">
+          <label class="form-label">AI 提供商</label>
+          <select name="ai_provider" class="form-select" id="aiProvider">
+            <option value="">使用全局默认</option>
+            <option value="deepseek" {{ 'selected' if not is_new and strategy.ai_provider == 'deepseek' else '' }}>DeepSeek</option>
+            <option value="qwen" {{ 'selected' if not is_new and strategy.ai_provider == 'qwen' else '' }}>Qwen (通义千问)</option>
+            <option value="local" {{ 'selected' if not is_new and strategy.ai_provider == 'local' else '' }}>本地模型 (Ollama/vLLM/LocalAI)</option>
+            <option value="other" {{ 'selected' if not is_new and strategy.ai_provider == 'other' else '' }}>其他</option>
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">模型名称</label>
+          <input name="ai_model" class="form-control" placeholder="如 deepseek-chat"
+                 value="{{ strategy.ai_model if not is_new else '' }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">API Base URL</label>
+          <input name="ai_base_url" class="form-control" placeholder="如 https://api.deepseek.com/v1"
+                 value="{{ strategy.ai_base_url if not is_new else '' }}">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">API Key</label>
+          <input name="ai_api_key" type="password" class="form-control"
+                 placeholder="{{ '••••(已设置，留空不变)' if not is_new and strategy.has_api_key else '留空使用全局Key' }}">
+        </div>
+      </div>      </div><!-- /aiConfigSection -->
+      <!-- 交易对 -->
+      <h6 class="border-bottom pb-2 mb-3"><i class="bi bi-currency-exchange"></i> 交易对</h6>
+      <div class="mb-3">
+        <div class="d-flex gap-2 mb-2">
+          <input id="newSymbol" class="form-control" placeholder="输入交易对，如 BTC-USDT-SWAP" onkeydown="if(event.key==='Enter'){event.preventDefault();addSymbol()}">
+          <button type="button" class="btn btn-outline-primary" onclick="addSymbol()">添加</button>
+        </div>
+        <div id="symbolTags">
+          {% if not is_new %}
+            {% for sym in strategy.symbols %}
+            <span class="badge bg-info me-1 mb-1" style="font-size:0.9rem">
+              {{ sym }}
+              <button type="button" class="btn-close btn-close-white ms-1" style="font-size:0.6rem" onclick="removeSymbol(this)"></button>
+            </span>
+            {% endfor %}
+          {% endif %}
+        </div>
+        <div id="symbolEmpty" class="text-muted" {% if not is_new and strategy.symbols %}style="display:none"{% endif %}>
+          请添加至少一个交易对
+        </div>
+      </div>
+
+      <!-- 涨幅榜自动扫描 -->
+      <h6 class="border-bottom pb-2 mb-3"><i class="bi bi-graph-up-arrow"></i> 涨幅榜自动扫描</h6>
+      <div class="mb-3">
+        <div class="form-check form-switch mb-2">
+          <input type="checkbox" class="form-check-input" id="scanEnabled" name="scan_enabled"
+                 {{ 'checked' if not is_new and strategy.scan_enabled else '' }}
+                 onchange="toggleScanConfig()">
+          <label class="form-check-label" for="scanEnabled">
+            启用涨幅榜扫描（自动从 OKX 涨幅榜选币交易，适合山寨币做空策略）
+          </label>
+        </div>
+        <div id="scanConfigPanel" style="{{ '' if not is_new and strategy.scan_enabled else 'display:none' }}">
+          <div class="alert alert-info py-2 mb-2" style="font-size:0.85rem">
+            <i class="bi bi-info-circle"></i> 开启后，每次运行策略时会自动扫描 USDT 永续合约涨幅榜，选取涨幅最大的币种进行分析。
+            上方手动添加的交易对仍然会被包含。BTC/ETH 默认排除。
+          </div>
+          <div class="row">
+            <div class="col-md-3 mb-2">
+              <label class="form-label">扫描前 N 个币</label>
+              <input name="scan_top_n" type="number" class="form-control" min="1" max="50"
+                     value="{{ strategy.scan_top_n if not is_new and strategy.scan_top_n else 5 }}">
+            </div>
+            <div class="col-md-3 mb-2">
+              <label class="form-label">最低涨幅 (%)</label>
+              <input name="scan_min_change_pct" type="number" step="0.5" class="form-control" min="0.5" max="100"
+                     value="{{ strategy.scan_min_change_pct if not is_new and strategy.scan_min_change_pct else 3.0 }}">
+            </div>
+            <div class="col-md-3 mb-2">
+              <label class="form-label">最低24h成交额(USDT)</label>
+              <input name="scan_min_volume_usdt" type="number" step="10000" class="form-control" min="0"
+                     value="{{ strategy.scan_min_volume_usdt if not is_new and strategy.scan_min_volume_usdt else 500000 }}">
+            </div>
+            <div class="col-md-3 mb-2">
+              <label class="form-label">额外排除币种</label>
+              <input id="scanExcludeInput" class="form-control" placeholder="如 DOGE-USDT-SWAP"
+                     onkeydown="if(event.key==='Enter'){event.preventDefault();addExclude()}">
+            </div>
+          </div>
+          <div id="excludeTags" class="mb-2">
+            {% if not is_new and strategy.scan_exclude_symbols %}
+              {% for sym in strategy.scan_exclude_symbols %}
+              <span class="badge bg-warning text-dark me-1 mb-1" style="font-size:0.85rem">
+                {{ sym }}
+                <button type="button" class="btn-close ms-1" style="font-size:0.55rem" onclick="removeExclude(this)"></button>
+              </span>
+              {% endfor %}
+            {% endif %}
+          </div>
+          <button type="button" class="btn btn-outline-warning btn-sm" onclick="testScan()">
+            <i class="bi bi-search"></i> 测试扫描涨幅榜
+          </button>
+          <div id="scanResult" class="mt-2" style="display:none"></div>
+        </div>
+      </div>
+
+      <!-- 风险参数 -->
+      <h6 class="border-bottom pb-2 mb-3"><i class="bi bi-shield-check"></i> 风险参数</h6>
+      <div class="row mb-3">
+        <div class="col-md-4">
+          <label class="form-label">开仓名义金额 (USDT)</label>
+          <input name="position_usdt" type="number" step="1" class="form-control" min="1"
+                 value="{{ strategy.position_usdt if not is_new else 100 }}">
+          <div class="form-text">每次开仓按该名义金额下单，预估保证金 = 名义金额 ÷ 杠杆</div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">杠杆倍数</label>
+          <input name="leverage" type="number" class="form-control" min="1" max="125"
+                 value="{{ strategy.leverage if not is_new else 3 }}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">止盈 / 止损</label>
+          <div class="form-control d-flex align-items-center gap-2" style="background:transparent;cursor:default">
+            <i class="bi bi-robot text-info"></i>
+            <span class="text-info fw-semibold">AI 动态决策</span>
+          </div>
+          <div class="form-text">AI 在给出开仓信号时同步返回止盈止损价格</div>
+        </div>
+      </div>
+
+      <!-- 提示词 -->
+      <div id="promptSection">
+      <h6 class="border-bottom pb-2 mb-3">
+        <i class="bi bi-chat-text"></i> 提示词模板
+        <button type="button" class="btn btn-outline-info btn-sm ms-2" onclick="loadDefaultPrompt()">加载默认模板</button>
+        <button type="button" class="btn btn-outline-success btn-sm ms-1" onclick="showTemplateSelector()">从模板库选择</button>
+        <a href="/prompt-templates" target="_blank" class="btn btn-outline-secondary btn-sm ms-1"><i class="bi bi-box-arrow-up-right"></i> 管理模板</a>
+      </h6>
+      <div class="mb-2">
+        <small class="text-muted">
+          可用变量:
+          <code>{symbol}</code> <code>{klines}</code> <code>{current_price}</code>
+          <code>{bb_upper}</code> <code>{bb_middle}</code> <code>{bb_lower}</code>
+          <code>{rsi}</code> <code>{macd}</code> <code>{macd_signal}</code> <code>{macd_histogram}</code>
+          <code>{avg_volume}</code> <code>{last_volume}</code>
+          <code>{equity}</code> <code>{available_balance}</code> <code>{position_info}</code>
+          <code>{indicators}</code> <code>{position_notional_usdt}</code>
+        </small>
+      </div>
+      <div class="mb-3">
+        <textarea name="prompt_template" id="promptTemplate" class="form-control" rows="12"
+                  style="font-family:monospace;font-size:0.85rem" required>{{ strategy.prompt_template if not is_new else default_prompt }}</textarea>
+      </div>
+      </div><!-- /promptSection -->
+
+      <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary" id="saveBtn">
+          {{ '创建策略' if is_new else '保存修改' }}
+        </button>
+        <a href="/strategies" class="btn btn-outline-secondary">取消</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- 模板选择弹窗 -->
+<div class="modal fade" id="tplSelectModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">选择策略模板</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="tplSelectBody" style="max-height:60vh;overflow-y:auto">
+        <p class="text-muted text-center">加载中...</p>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+const isNew = {{ 'true' if is_new else 'false' }};
+const strategyId = {{ strategy.id if not is_new else 'null' }};
+
+function getSymbols() {
+  const tags = document.querySelectorAll('#symbolTags .badge');
+  return Array.from(tags).map(t => t.textContent.trim());
+}
+
+function addSymbol() {
+  const input = document.getElementById('newSymbol');
+  const val = input.value.trim().toUpperCase();
+  if (!val) return;
+  const existing = getSymbols();
+  if (existing.includes(val)) { input.value = ''; return; }
+  const span = document.createElement('span');
+  span.className = 'badge bg-info me-1 mb-1';
+  span.style.fontSize = '0.9rem';
+  span.innerHTML = `${escapeHtml(val)} <button type="button" class="btn-close btn-close-white ms-1" style="font-size:0.6rem" onclick="removeSymbol(this)"></button>`;
+  document.getElementById('symbolTags').appendChild(span);
+  document.getElementById('symbolEmpty').style.display = 'none';
+  input.value = '';
+}
+
+function removeSymbol(btn) {
+  btn.parentElement.remove();
+  if (getSymbols().length === 0) document.getElementById('symbolEmpty').style.display = '';
+}
+
+// ─── 涨幅榜扫描配置 ───
+function toggleScanConfig() {
+  const panel = document.getElementById('scanConfigPanel');
+  panel.style.display = document.getElementById('scanEnabled').checked ? '' : 'none';
+}
+
+// ─── 初始化 AI 模式显示 ───
+document.addEventListener('DOMContentLoaded', function() {
+  if (!document.getElementById('useAiSwitch').checked) {
+    document.getElementById('aiConfigSection').style.display = 'none';
+    document.getElementById('promptSection').style.display = 'none';
+    document.getElementById('promptTemplate').removeAttribute('required');
+  }
+});
+
+function getExcludeSymbols() {
+  const tags = document.querySelectorAll('#excludeTags .badge');
+  return Array.from(tags).map(t => t.textContent.trim());
+}
+
+function addExclude() {
+  const input = document.getElementById('scanExcludeInput');
+  const val = input.value.trim().toUpperCase();
+  if (!val) return;
+  const existing = getExcludeSymbols();
+  if (existing.includes(val)) { input.value = ''; return; }
+  const span = document.createElement('span');
+  span.className = 'badge bg-warning text-dark me-1 mb-1';
+  span.style.fontSize = '0.85rem';
+  span.innerHTML = `${escapeHtml(val)} <button type="button" class="btn-close ms-1" style="font-size:0.55rem" onclick="removeExclude(this)"></button>`;
+  document.getElementById('excludeTags').appendChild(span);
+  input.value = '';
+}
+
+function removeExclude(btn) {
+  btn.parentElement.remove();
+}
+
+async function testScan() {
+  const btn = event.target.closest('button');
+  const resultDiv = document.getElementById('scanResult');
+  setLoading(btn, true);
+  resultDiv.style.display = 'none';
+  try {
+    const data = await api('POST', '/strategies/scan-gainers', {
+      top_n: parseInt(document.querySelector('[name=scan_top_n]').value) || 5,
+      min_change_pct: parseFloat(document.querySelector('[name=scan_min_change_pct]').value) || 3.0,
+      min_volume_usdt: parseFloat(document.querySelector('[name=scan_min_volume_usdt]').value) || 500000,
+      exclude_symbols: getExcludeSymbols(),
+    });
+    resultDiv.style.display = '';
+    if (data.length === 0) {
+      resultDiv.innerHTML = '<div class="alert alert-warning py-2">未找到符合条件的涨幅币种</div>';
+    } else {
+      let html = '<table class="table table-sm table-bordered mb-0"><thead><tr><th>交易对</th><th>价格</th><th>涨幅</th><th>24h成交额(USDT)</th></tr></thead><tbody>';
+      data.forEach(g => {
+        html += `<tr><td>${escapeHtml(g.symbol)}</td><td>${g.price}</td><td class="text-danger fw-bold">+${g.change_pct_1h}%</td><td>${Number(g.volume_24h).toLocaleString()}</td></tr>`;
+      });
+      html += '</tbody></table>';
+      resultDiv.innerHTML = html;
+    }
+  } catch (e) {
+    resultDiv.style.display = '';
+    resultDiv.innerHTML = `<div class="alert alert-danger py-2">扫描失败: ${escapeHtml(e.message)}</div>`;
+  } finally {
+    setLoading(btn, false);
+  }
+}
+
+async function loadDefaultPrompt() {
+  try {
+    const data = await api('GET', '/strategies/default-prompt');
+    document.getElementById('promptTemplate').value = data.prompt_template;
+  } catch (e) { showToast('加载失败', 'error'); }
+}
+
+function toggleAiMode() {
+  const isAi = document.getElementById('useAiSwitch').checked;
+  const aiSection = document.getElementById('aiConfigSection');
+  const promptSection = document.getElementById('promptSection');
+  const modeAlert = document.getElementById('modeAlert');
+  const modeLabelText = document.getElementById('modeLabelText');
+  const promptTextarea = document.getElementById('promptTemplate');
+
+  if (isAi) {
+    aiSection.style.display = '';
+    promptSection.style.display = '';
+    promptTextarea.setAttribute('required', 'required');
+    modeAlert.style.background = '#1a3a2a';
+    modeAlert.style.border = '1px solid #198754';
+    modeLabelText.innerHTML = '<i class="bi bi-robot text-success"></i> <strong class="text-success">AI 智能模式</strong><span class="text-muted ms-2">— 每轮调用 AI 进行交易决策</span>';
+  } else {
+    aiSection.style.display = 'none';
+    promptSection.style.display = 'none';
+    promptTextarea.removeAttribute('required');
+    modeAlert.style.background = '#0d3349';
+    modeAlert.style.border = '1px solid #0dcaf0';
+    modeLabelText.innerHTML = '<i class="bi bi-lightning-fill text-info"></i> <strong class="text-info">纯规则模式</strong><span class="text-muted ms-2">— 不调用 AI，基于布林带位置 + RSI 自动网格式决策</span>';
+  }
+}
+
+async function saveStrategy(e) {
+  e.preventDefault();
+  const form = document.getElementById('strategyForm');
+  const fd = new FormData(form);
+  const btn = document.getElementById('saveBtn');
+
+  const payload = {
+    name: fd.get('name'),
+    enabled: !!fd.get('enabled'),
+    ai_provider: fd.get('ai_provider'),
+    ai_api_key: fd.get('ai_api_key'),
+    ai_base_url: fd.get('ai_base_url'),
+    ai_model: fd.get('ai_model'),
+    prompt_template: fd.get('prompt_template'),
+    symbols: getSymbols(),
+    interval_minutes: parseInt(fd.get('interval_minutes')) || 15,
+    position_usdt: parseFloat(fd.get('position_usdt')) || 100,
+    leverage: parseInt(fd.get('leverage')) || 3,
+    scan_enabled: document.getElementById('scanEnabled').checked,
+    scan_top_n: parseInt(fd.get('scan_top_n')) || 5,
+    scan_min_change_pct: parseFloat(fd.get('scan_min_change_pct')) || 3.0,
+    scan_min_volume_usdt: parseFloat(fd.get('scan_min_volume_usdt')) || 500000,
+    scan_exclude_symbols: getExcludeSymbols(),
+    use_ai: document.getElementById('useAiSwitch').checked,
+  };
+  if (!payload.ai_api_key) delete payload.ai_api_key;
+
+  setLoading(btn, true);
+  try {
+    if (isNew) {
+      await api('POST', '/strategies', payload);
+    } else {
+      await api('PUT', `/strategies/${strategyId}`, payload);
+    }
+    showToast(isNew ? '策略已创建' : '修改已保存');
+    setTimeout(() => location.href = '/strategies', 600);
+  } catch (e) {
+    showToast('保存失败: ' + e.message, 'error');
+    setLoading(btn, false);
+  }
+  return false;
+}
+
+// ─── 从模板库选择 ───
+let tplSelectModal;
+async function showTemplateSelector() {
+  if (!tplSelectModal) tplSelectModal = new bootstrap.Modal(document.getElementById('tplSelectModal'));
+  const body = document.getElementById('tplSelectBody');
+  body.innerHTML = '<p class="text-muted text-center">加载中...</p>';
+  tplSelectModal.show();
+  try {
+    const list = await api('GET', '/prompt-templates');
+    if (list.length === 0) {
+      body.innerHTML = '<p class="text-muted text-center">暂无模板，请先到<a href="/prompt-templates" target="_blank">模板管理</a>中创建</p>';
+      return;
+    }
+    body.innerHTML = '';
+    list.forEach(t => {
+      const preview = t.content.substring(0, 150).replace(/</g, '&lt;') + (t.content.length > 150 ? '...' : '');
+      const div = document.createElement('div');
+      div.className = 'card mb-2';
+      div.style.cursor = 'pointer';
+      div.innerHTML = `
+        <div class="card-body py-2">
+          <div class="d-flex justify-content-between align-items-center">
+            <strong>${escapeHtml(t.name)}${t.is_default ? ' <span class="badge bg-primary">默认</span>' : ''}</strong>
+            <button class="btn btn-sm btn-primary" onclick="applyTemplate(${t.id})">使用</button>
+          </div>
+          <small class="text-muted">${escapeHtml(t.description || '')}</small>
+          <pre class="mt-1 mb-0 text-muted" style="font-size:0.75rem;max-height:60px;overflow:hidden;white-space:pre-wrap">${preview}</pre>
+        </div>`;
+      body.appendChild(div);
+    });
+  } catch (e) {
+    body.innerHTML = '<p class="text-danger text-center">加载失败: ' + escapeHtml(e.message) + '</p>';
+  }
+}
+
+async function applyTemplate(id) {
+  try {
+    const tpl = await api('GET', `/prompt-templates/${id}`);
+    document.getElementById('promptTemplate').value = tpl.content;
+    tplSelectModal.hide();
+    showToast('已加载模板: ' + tpl.name);
+  } catch (e) {
+    showToast('加载失败', 'error');
+  }
+}
+</script>
+{% endblock %}

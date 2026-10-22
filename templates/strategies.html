@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}策略管理 - OKX AI{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4><i class="bi bi-gear"></i> AI 策略管理</h4>
+  <a href="/strategies/new" class="btn btn-primary"><i class="bi bi-plus-lg"></i> 新建策略</a>
+</div>
+
+{% if not strategies %}
+<div class="text-center py-5 text-muted">
+  <i class="bi bi-inbox" style="font-size:3rem"></i>
+  <p class="mt-2">暂无策略，点击右上角创建</p>
+</div>
+{% else %}
+<div class="row">
+  {% for s in strategies %}
+  <div class="col-md-6 col-xl-4 mb-3">
+    <div class="card card-strategy h-100 {{ 'border-success' if s.enabled else 'border-secondary' }}">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <strong>{{ s.name }}</strong>
+        <span class="badge {{ 'bg-light text-success' if s.enabled else 'bg-secondary' }}">
+          {{ '运行中' if s.enabled else '已停止' }}
+        </span>
+      </div>
+      <div class="card-body">
+        <div class="mb-2">
+          <small class="text-muted">AI模型:</small>
+          <span class="ms-1">{{ s.ai_provider or '全局默认' }} / {{ s.ai_model or '默认' }}</span>
+        </div>
+        <div class="mb-2">
+          <small class="text-muted">交易对:</small>
+          <div>
+            {% for sym in s.symbols %}
+            <span class="badge bg-info me-1 mb-1">{{ sym }}</span>
+            {% else %}
+            <span class="text-muted">未配置</span>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="row text-center mt-2">
+          <div class="col-3"><small class="text-muted d-block">周期</small><strong>{{ s.interval_minutes }}分</strong></div>
+          <div class="col-3"><small class="text-muted d-block">杠杆</small><strong>{{ s.leverage }}x</strong></div>
+          <div class="col-3"><small class="text-muted d-block">开仓名义金额</small><strong>{{ s.position_usdt }} U</strong></div>
+          <div class="col-3"><small class="text-muted d-block">止盈止损</small><strong class="text-info"><i class="bi bi-robot"></i> AI</strong></div>
+        </div>
+      </div>
+      <div class="card-footer d-flex gap-2">
+        <button class="btn btn-sm {{ 'btn-warning' if s.enabled else 'btn-success' }}"
+                onclick="toggleStrategy({{ s.id }}, this)">
+          <i class="bi {{ 'bi-pause' if s.enabled else 'bi-play' }}"></i>
+          {{ '暂停' if s.enabled else '启动' }}
+        </button>
+        <button class="btn btn-sm btn-outline-primary" onclick="runNow({{ s.id }}, this)">
+          <i class="bi bi-lightning"></i> 立即执行
+        </button>
+        <a href="/strategies/{{ s.id }}/edit" class="btn btn-sm btn-outline-secondary">
+          <i class="bi bi-pencil"></i> 编辑
+        </a>
+        <button class="btn btn-sm btn-outline-danger" onclick="deleteStrategy({{ s.id }}, '{{ s.name }}')">
+          <i class="bi bi-trash"></i>
+        </button>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function toggleStrategy(id, btn) {
+  setLoading(btn, true);
+  try {
+    const data = await api('POST', `/strategies/${id}/toggle`);
+    showToast(data.enabled ? '策略已启动' : '策略已暂停');
+    setTimeout(() => location.reload(), 500);
+  } catch (e) { showToast(e.message, 'error'); setLoading(btn, false); }
+}
+
+async function runNow(id, btn) {
+  setLoading(btn, true);
+  try {
+    const data = await api('POST', `/strategies/${id}/run`);
+    showToast(data.message);
+  } catch (e) { showToast('执行失败: ' + e.message, 'error'); }
+  setLoading(btn, false);
+}
+
+async function deleteStrategy(id, name) {
+  if (!confirm(`确认删除策略 "${name}"？相关日志和交易记录也会被删除。`)) return;
+  try {
+    await api('DELETE', `/strategies/${id}`);
+    showToast('已删除');
+    setTimeout(() => location.reload(), 500);
+  } catch (e) { showToast('删除失败: ' + e.message, 'error'); }
+}
+</script>
+{% endblock %}
